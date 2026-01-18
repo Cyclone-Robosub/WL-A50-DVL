@@ -30,16 +30,33 @@ class DVL {
             bool status = false;
         };
 
+        struct Config {
+            float speed_of_sound;
+            float mounting_rotation_offset;
+            char acoustic_enabled;
+            char dark_mode_enabled;
+            std::string range_mode = "auto";
+            bool periodic_cycling_enabled = true;
+
+        }
+
         // PUBLIC API //
         //reads
         VR readVelocityReport(); //velocity report
         DRR readDRReport(); //dead reckoning report
-        //TODO getVersion, getProductDetail, getSettings
+        std::string readVersion();
+        std::string readDetails();
+        Config readConfig();
 
-        //sets
-        bool setSettings(float, float, char, char, string, char){
-        bool resetDR(); //reset the dead reckoning report
-        bool calGyro(); //zero the gyroscope
+
+        
+
+        //sets (returns true if acknowledge was received)
+        bool setConfig(float speed_of_sound, float mounting_rotation_offset, char acoustic_enabled, char dark_mode_enabled, std::string range_mode, bool periodic_cycling_enabled);
+        bool resetDRR(); //reset the dead reckoning report
+        bool resetGyro(); //zero the gyroscope
+        bool setSerProtocol(uint8_t);
+
         
     private:
         /*

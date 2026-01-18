@@ -16,25 +16,40 @@ namespace dvl {
     
     // Public Reads
     VR DVL::readVelocityReport(){
+        //check serial for VR
         return lastVelocityReport;
     }
 
     DRR DVL::readDRReport(){
+        //check serial for DDR
         return lastDRReport;
     }
 
+    std::string DVL::readVersion(){}
+
+    std::string DVL::getDetails(){}
+
+    Config DVL::readConfig(){}
+
+
     // Public Writes
-    bool DVL::setSettings(float speed_of_sound, float mounting_rotation_offset, char acoustic_enabled, char dark_mode_enabled, string range_mode, char periodic_cycling_enabled){
+    bool DVL::setConfig(float speed_of_sound, float mounting_rotation_offset, char acoustic_enabled, char dark_mode_enabled, std::string range_mode, bool periodic_cycling_enabled){
         //to do: add setting args
-        return sendCommand(CMD_SET_SETTINGS,{std::to_string(speed_of_sound), std::to_string(mounting_rotation_offset), acoustic_enabled, dark_mode_enabled, range_mode, periodic_cycling_enabled});
+        return sendCommand(CMD_SET_SETTINGS,{std::to_string(speed_of_sound), std::to_string(mounting_rotation_offset), acoustic_enabled, dark_mode_enabled, range_mode, std::to_string(periodic_cycling_enabled)});
     }
 
-    bool DVL::resetDR(){
+    bool DVL::resetDRR(){
+        //wait for ack
         return sendCommand(CMD_RESET_DR);
     }
 
-    bool DVL::calGyro(){
+    bool DVL::resetGyro(){
+        //add wait for ack
         return sendCommand(CMD_CALIBRATE_GYRO);
+    }
+
+    bool DVL::triggerPing(){
+
     }
 
     bool DVL::setSerialProtocol(){
@@ -61,15 +76,16 @@ namespace dvl {
         char cmd = sentence[2];
 
         //TODO add checksum validation
-
         std::string payload(sentence.begin() + 3, sentence.end());
         size_t cs_pos = payload.find(CS);
         if(cs_pos == std::string::npos) return; // no checksum found
         payload = payload.substr(0, cs_pos);
 
+
         std::vector<std::string> tokens;
         std::stringstream ss(payload);
         std::string item;
+
         while(std::getline(ss, item, ',')) {
             tokens.push_back(item);
         }
@@ -123,7 +139,11 @@ namespace dvl {
         return true;
     }
 
+    bool DVL::waitForResponse(uint8_t){}
 
+    bool DVL::waitForAck(){
+        
+    }
 
 } //namespace
 
