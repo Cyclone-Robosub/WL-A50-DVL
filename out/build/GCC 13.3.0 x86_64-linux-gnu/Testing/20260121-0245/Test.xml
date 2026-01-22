@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="Linux-g++"
+	BuildStamp="20260121-0245-Experimental"
+	Name="Kory-Asus-Zenbook"
+	Generator="ctest-3.28.3"
+	CompilerName="/usr/bin/g++"
+	CompilerVersion="13.3.0"
+	OSName="Linux"
+	Hostname="Kory-Asus-Zenbook"
+	OSRelease="6.14.0-33-generic"
+	OSVersion="#33~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 19 17:02:30 UTC 2"
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="GenuineIntel"
+	VendorID="Intel Corporation"
+	FamilyID="6"
+	ModelID="142"
+	ProcessorCacheSize="8192"
+	NumberOfLogicalCPU="8"
+	NumberOfPhysicalCPU="4"
+	TotalVirtualMemory="2047"
+	TotalPhysicalMemory="15790"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="4196.54"
+	>
+	<Testing>
+		<StartDateTime>Jan 20 19:21 PST</StartDateTime>
+		<StartTestTime>1768965719</StartTestTime>
+		<TestList/>
+		<EndDateTime>Jan 20 19:21 PST</EndDateTime>
+		<EndTestTime>1768965719</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>
