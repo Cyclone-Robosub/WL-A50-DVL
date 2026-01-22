@@ -1,4 +1,5 @@
 #include "dvl.hpp"
+#include <iostream>
 
 namespace dvl {
 
@@ -85,6 +86,7 @@ namespace dvl {
         sendCommand(CMD_GET_VERSION); 
         
         if(holdForResponse(CMD_GET_VERSION)){
+            //std::cout << version << std::endl;
             return version;
         } else {
             version = "x.x.x";
@@ -115,9 +117,9 @@ namespace dvl {
 
 
     // Public Writes
-    bool DVL::setConfig(float speed_of_sound, float mounting_rotation_offset, char acoustic_enabled, char dark_mode_enabled, std::string range_mode, bool periodic_cycling_enabled){
+    bool DVL::setConfig(float speed_of_sound, float mounting_rotation_offset, std::string acoustic_enabled, std::string dark_mode_enabled, std::string range_mode, std::string periodic_cycling_enabled){
         //to do: add setting args
-        return sendCommand(CMD_SET_SETTINGS, {std::to_string(speed_of_sound),std::to_string(mounting_rotation_offset),std::string(1, acoustic_enabled),std::string(1, dark_mode_enabled),range_mode,std::to_string(periodic_cycling_enabled)
+        return sendCommand(CMD_SET_SETTINGS, {std::to_string(speed_of_sound),std::to_string(mounting_rotation_offset),acoustic_enabled,range_mode,periodic_cycling_enabled
         });    
     }
 
@@ -170,7 +172,7 @@ namespace dvl {
         */
         
         using clock = std::chrono::steady_clock;
-        constexpr auto TIMEOUT = std::chrono::milliseconds(10);
+        constexpr auto TIMEOUT = std::chrono::milliseconds(100);
 
         auto start = clock::now();
         std::string complete_line;
@@ -209,7 +211,7 @@ namespace dvl {
 
             parseResponse(complete_line);
 
-            if (complete_line[2] == 2) {
+            if (complete_line[2] == expected_response) {
                 return true; //if the expected response was received as the command field of the response
             }
         }
@@ -217,136 +219,149 @@ namespace dvl {
         return false; //return false if the code timed out
     }
 
-    bool DVL::parseResponse(std::string& complete_line){
+    bool DVL::parseResponse(std::string& complete_line) {
 
-        //identify the command
+        //std::cout << complete_line << std::endl;
+
+        // Make sure we have at least 3 characters to safely access complete_line[2]
+        if (complete_line.size() < 3) return false;
+
         char cmd = complete_line[2];
 
-        //strip whitespace and newlines
+        // Strip leading/trailing whitespace and newlines
         complete_line.erase(0, complete_line.find_first_not_of(" \t\r\n"));
         complete_line.erase(complete_line.find_last_not_of(" \t\r\n") + 1);
 
-        // strip checksum "*xx"
-        if (complete_line.size() >= 3 &&
-            complete_line[complete_line.size() - 3] == '*') {
+        // Strip checksum "*xx" if present
+        if (complete_line.size() >= 3 && complete_line[complete_line.size() - 3] == '*') {
             complete_line.erase(complete_line.size() - 3);
         }
 
-        //check cmd against each possibility
-        switch (cmd) {
-            case 'v': //protocol version
-                version = complete_line.substr(4);
-                return true;
-                break;
-            case 'w': //product details
-                product_details = complete_line.substr(4);
-                return true;
-                break;
-            case 'a': //acknowledge
-                return true;
-                break;
-            case 'c': {//configuration
-                std::stringstream ss(complete_line);
+        try {
+            switch (cmd) {
+                case 'v': // protocol version
+                    if (complete_line.size() > 4) {
+                        version = complete_line.substr(4);
+                        //std::cout << version << std::endl;
+                    } else {
+                        version = "";
+                        return false;
+                    }
+                    return true;
 
-                //split up the line into a string array
-                std::string field;
-                std::vector<std::string> fields;
-                while(std::getline(ss, field,',')) {
-                    fields.push_back(field);
+                case 'w': // product details
+                    if (complete_line.size() > 4) {
+                        product_details = complete_line.substr(4);
+                    } else {
+                        product_details = "";
+                        return false;
+                    }
+                    return true;
+
+                case 'a': // acknowledge
+                    return true;
+
+                case 'c': { // configuration
+                    std::stringstream ss(complete_line);
+                    std::string field;
+                    std::vector<std::string> fields;
+                    while (std::getline(ss, field, ',')) fields.push_back(field);
+
+                    if (fields.size() < 7) return false;
+
+                    config.speed_of_sound = std::stof(fields[1]);
+                    config.mounting_rotation_offset = std::stof(fields[2]);
+                    config.acoustic_enabled = fields[3];
+                    config.dark_mode_enabled = fields[4];
+                    config.range_mode = fields[5];
+                    config.periodic_cycling_enabled = fields[6];
+
+                    return true;
                 }
 
-                //unpack into config struct
-                config.speed_of_sound = std::stof(fields[1]);
-                config.mounting_rotation_offset = std::stof(fields[2]);
-                config.acoustic_enabled = fields[3][0];
-                config.dark_mode_enabled = fields[4][0];
-                config.range_mode = fields[5];
-                config.periodic_cycling_enabled = fields[6][0];
+                case 'z': { // velocity report
+                    std::stringstream ss(complete_line);
+                    std::string field;
+                    std::vector<std::string> fields;
+                    while (std::getline(ss, field, ',')) fields.push_back(field);
 
-                return true;
-                break;
-                }
-            case 'z': {//velocity report
-                std::stringstream ss(complete_line);
-                std::string field;
-                std::vector<std::string> fields;
+                    if (fields.size() < 20) return false;
 
-                while (std::getline(ss, field, ',')) {
-                    fields.push_back(field);
-                }
+                    vr.vx = std::stof(fields[1]);
+                    vr.vy = std::stof(fields[2]);
+                    vr.vz = std::stof(fields[3]);
+                    vr.valid = !fields[4].empty() ? fields[4][0] : 'n';
+                    vr.altitude = std::stof(fields[5]);
+                    vr.fom = std::stof(fields[6]);
 
-                vr.vx = std::stof(fields[1]);
-                vr.vy = std::stof(fields[2]);
-                vr.vz = std::stof(fields[3]);
-                vr.valid = fields[4][0];
-                vr.altitude = std::stof(fields[5]);
-                vr.fom = std::stof(fields[6]);
+                    for (int i = 0; i < 9; ++i) {
+                        vr.covariance[i] = std::stof(fields[7 + i]);
+                    }
 
-                for (int i = 0; i < 9; ++i) {
-                    vr.covariance[i] = std::stof(fields[7 + i]);
+                    vr.time_of_validity = std::stoll(fields[16]);
+                    vr.time_of_transmission = std::stoll(fields[17]);
+                    vr.time = std::stof(fields[18]);
+                    vr.status = static_cast<uint8_t>(std::stoul(fields[19], nullptr, 10));
+
+                    return true;
                 }
 
-                vr.time_of_validity = std::stoll(fields[16]);
-                vr.time_of_transmission = std::stoll(fields[17]);
-                vr.time = std::stof(fields[18]);
-                vr.status = static_cast<uint8_t>(std::stoul(fields[19], nullptr, 10));
-                return true;
-                break;
-                }
-            case 'p': {//dead reckoning report
-                std::stringstream ss(complete_line);
-                std::string field;
-                std::vector<std::string> fields;
-                while(std::getline(ss, field, ',')){
-                    fields.push_back(field);
+                case 'p': { // dead reckoning report
+                    std::stringstream ss(complete_line);
+                    std::string field;
+                    std::vector<std::string> fields;
+                    while (std::getline(ss, field, ',')) fields.push_back(field);
+
+                    if (fields.size() < 9) return false;
+
+                    drr.x = std::stof(fields[1]);
+                    drr.y = std::stof(fields[2]);
+                    drr.z = std::stof(fields[3]);
+                    drr.pos_std = std::stof(fields[4]);
+                    drr.roll = std::stof(fields[5]);
+                    drr.pitch = std::stof(fields[6]);
+                    drr.yaw = std::stof(fields[7]);
+                    drr.status = static_cast<uint8_t>(std::stoul(fields[8], nullptr, 10));
+
+                    return true;
                 }
 
-                drr.x = std::stof(fields[1]);
-                drr.y = std::stof(fields[2]);
-                drr.z = std::stof(fields[3]);
-                drr.pos_std = std::stof(fields[4]);
-                drr.roll = std::stof(fields[5]);
-                drr.pitch = std::stof(fields[6]);
-                drr.yaw = std::stof(fields[7]);
-                drr.status = static_cast<uint8_t>(std::stoul(fields[8], nullptr, 10));
-                return true;
-                break;
-                 }
-            case '?': //malformed request
-                return false;
-                break;
-            case '!': //bad checksum
-                return false;
-                break;
-            case 'n': //not acknowledged
-                return false;
-                break;
-            default:
-                return false;
-                break;
+                case '?': // malformed request
+                case '!': // bad checksum
+                case 'n': // not acknowledged
+                    return false;
+
+                default:
+                    return false;
+            }
+        } catch (const std::exception& e) {
+            // Catch any parsing errors (std::stof, std::stoll, etc.)
+            std::cerr << "parseResponse error: " << e.what() << std::endl;
+            return false;
         }
-
     }
 
-    bool DVL::sendCommand(uint8_t cmd, const std::vector<std::string>& options) {
 
+    bool DVL::sendCommand(uint8_t cmd, const std::vector<std::string>& options) {
+        //std::cout << cmd << std::endl;
         std::stringstream msg;
 
         // Build message
-        msg << SOP << DIR_CMD << static_cast<int>(cmd);  // add start character, direction, and command
+
+        msg << SOP << DIR_CMD << static_cast<char>(cmd);  // add start character, direction, and command
+        //std::cout << msg.str() << std::endl;
 
         for (const auto& opt : options) {               // add options as comma-separated
             msg << "," << opt;
         }
 
         // Compute checksum (CRC-8)
-        uint8_t crc = 0x00;
         std::string body = msg.str();
-        for (char c : body) {
-            crc = CRC8_TABLE[crc ^ static_cast<uint8_t>(c)];
-        }
+        uint8_t crc = crc8(reinterpret_cast<uint8_t*>(body.data()), body.size());
 
         msg << CS << std::hex << std::setw(2) << std::setfill('0') << (int)crc << "\n";
+
+        //std::cout << msg.str() << std::endl;
 
         // Write to serial port using POSIX write
         std::string data = msg.str();
@@ -361,6 +376,51 @@ namespace dvl {
 
         return true;
 }
+
+    static const uint8_t lookup_table[256] = {
+        0x00U,0x07U,0x0EU,0x09U,0x1CU,0x1BU,0x12U,0x15U,
+        0x38U,0x3FU,0x36U,0x31U,0x24U,0x23U,0x2AU,0x2DU,
+        0x70U,0x77U,0x7EU,0x79U,0x6CU,0x6BU,0x62U,0x65U,
+        0x48U,0x4FU,0x46U,0x41U,0x54U,0x53U,0x5AU,0x5DU,
+        0xE0U,0xE7U,0xEEU,0xE9U,0xFCU,0xFBU,0xF2U,0xF5U,
+        0xD8U,0xDFU,0xD6U,0xD1U,0xC4U,0xC3U,0xCAU,0xCDU,
+        0x90U,0x97U,0x9EU,0x99U,0x8CU,0x8BU,0x82U,0x85U,
+        0xA8U,0xAFU,0xA6U,0xA1U,0xB4U,0xB3U,0xBAU,0xBDU,
+        0xC7U,0xC0U,0xC9U,0xCEU,0xDBU,0xDCU,0xD5U,0xD2U,
+        0xFFU,0xF8U,0xF1U,0xF6U,0xE3U,0xE4U,0xEDU,0xEAU,
+        0xB7U,0xB0U,0xB9U,0xBEU,0xABU,0xACU,0xA5U,0xA2U,
+        0x8FU,0x88U,0x81U,0x86U,0x93U,0x94U,0x9DU,0x9AU,
+        0x27U,0x20U,0x29U,0x2EU,0x3BU,0x3CU,0x35U,0x32U,
+        0x1FU,0x18U,0x11U,0x16U,0x03U,0x04U,0x0DU,0x0AU,
+        0x57U,0x50U,0x59U,0x5EU,0x4BU,0x4CU,0x45U,0x42U,
+        0x6FU,0x68U,0x61U,0x66U,0x73U,0x74U,0x7DU,0x7AU,
+        0x89U,0x8EU,0x87U,0x80U,0x95U,0x92U,0x9BU,0x9CU,
+        0xB1U,0xB6U,0xBFU,0xB8U,0xADU,0xAAU,0xA3U,0xA4U,
+        0xF9U,0xFEU,0xF7U,0xF0U,0xE5U,0xE2U,0xEBU,0xECU,
+        0xC1U,0xC6U,0xCFU,0xC8U,0xDDU,0xDAU,0xD3U,0xD4U,
+        0x69U,0x6EU,0x67U,0x60U,0x75U,0x72U,0x7BU,0x7CU,
+        0x51U,0x56U,0x5FU,0x58U,0x4DU,0x4AU,0x43U,0x44U,
+        0x19U,0x1EU,0x17U,0x10U,0x05U,0x02U,0x0BU,0x0CU,
+        0x21U,0x26U,0x2FU,0x28U,0x3DU,0x3AU,0x33U,0x34U,
+        0x4EU,0x49U,0x40U,0x47U,0x52U,0x55U,0x5CU,0x5BU,
+        0x76U,0x71U,0x78U,0x7FU,0x6AU,0x6DU,0x64U,0x63U,
+        0x3EU,0x39U,0x30U,0x37U,0x22U,0x25U,0x2CU,0x2BU,
+        0x06U,0x01U,0x08U,0x0FU,0x1AU,0x1DU,0x14U,0x13U,
+        0xAEU,0xA9U,0xA0U,0xA7U,0xB2U,0xB5U,0xBCU,0xBBU,
+        0x96U,0x91U,0x98U,0x9FU,0x8AU,0x8DU,0x84U,0x83U,
+        0xDEU,0xD9U,0xD0U,0xD7U,0xC2U,0xC5U,0xCCU,0xCBU,
+        0xE6U,0xE1U,0xE8U,0xEFU,0xFAU,0xFDU,0xF4U,0xF3U,
+    };
+
+    uint8_t crc8(uint8_t *message, int message_length) {
+        uint8_t checksum = 0;
+        while (message_length > 0) {
+            checksum = lookup_table[*message ^ checksum];
+            message++;
+            message_length--;
+        }
+        return checksum;
+    }
 
 
 } //namespace
