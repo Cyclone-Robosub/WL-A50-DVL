@@ -1,30 +1,68 @@
-#include "dvl.h"
+#include "dvl.hpp"
 
 namespace dvl {
 
     // Constructor
-    DVL::DVL(const std::string& port, unsigned long baudrate = 115200) {
-        //error config definition
+   DVL::DVL(const std::string& port, unsigned long baudrate /*= 115200*/) {
+        // Error config definition
         error_config.speed_of_sound = 0.0;
         error_config.mounting_rotation_offset = 0.0;
         error_config.acoustic_enabled = 'x';
         error_config.dark_mode_enabled = 'x';
         error_config.range_mode = 'x';
         error_config.periodic_cycling_enabled = 'x';
-        config = error_config; //this will get overwritten by the first successful readConfig
+        config = error_config; // will get overwritten by first successful readConfig
 
-        //serial setup
-        ser.setPort(port);
-        ser.setBaudrate(baudrate);
-        serial::Timeout timeout = serial::Timeout::simpleTimeout(1000);
-        ser.setTimeout(timeout);
-        ser.open();
-        if(!ser.isOpen()) {
-            throw std::runtime_error("Failed to open serial port");
+        // Open serial port
+        fd = open(port.c_str(), O_RDWR | O_NOCTTY | O_SYNC);
+        if (fd < 0) {
+            throw std::runtime_error("Failed to open serial port: " + std::string(strerror(errno)));
+        }
+
+        // Configure port
+        struct termios tty;
+        if (tcgetattr(fd, &tty) != 0) {
+            close(fd);
+            throw std::runtime_error("Failed to get terminal attributes: " + std::string(strerror(errno)));
+        }
+
+        // Set baud rate
+        speed_t speed;
+        switch (baudrate) {
+            case 9600: speed = B9600; break;
+            case 19200: speed = B19200; break;
+            case 38400: speed = B38400; break;
+            case 57600: speed = B57600; break;
+            case 115200: speed = B115200; break;
+            default:
+                close(fd);
+                throw std::invalid_argument("Unsupported baudrate");
+        }
+        cfsetospeed(&tty, speed);
+        cfsetispeed(&tty, speed);
+
+        // Configure 8N1, no flow control
+        tty.c_cflag = (tty.c_cflag & ~CSIZE) | CS8; // 8 bits
+        tty.c_cflag &= ~PARENB; // no parity
+        tty.c_cflag &= ~CSTOPB; // 1 stop bit
+        tty.c_cflag &= ~CRTSCTS; // no hardware flow control
+        tty.c_cflag |= CLOCAL | CREAD; // enable receiver
+
+        tty.c_lflag = 0; // non-canonical mode
+        tty.c_oflag = 0; // no remapping, no delays
+        tty.c_iflag = 0; // no special handling
+
+        tty.c_cc[VMIN] = 0;  // non-blocking read
+        tty.c_cc[VTIME] = 10; // 1 second timeout (VTIME is in deciseconds)
+
+        if (tcsetattr(fd, TCSANOW, &tty) != 0) {
+            close(fd);
+            throw std::runtime_error("Failed to set terminal attributes: " + std::string(strerror(errno)));
         }
     }
-    
+
     // Public Reads
+
     VR DVL::readVelocityReport(){
         if(holdForResponse(REC_VR)){
             return vr;
@@ -79,8 +117,10 @@ namespace dvl {
     // Public Writes
     bool DVL::setConfig(float speed_of_sound, float mounting_rotation_offset, char acoustic_enabled, char dark_mode_enabled, std::string range_mode, bool periodic_cycling_enabled){
         //to do: add setting args
-        return sendCommand(CMD_SET_SETTINGS,{std::to_string(speed_of_sound), std::to_string(mounting_rotation_offset), acoustic_enabled, dark_mode_enabled, range_mode, std::to_string(periodic_cycling_enabled)});
+        return sendCommand(CMD_SET_SETTINGS, {std::to_string(speed_of_sound),std::to_string(mounting_rotation_offset),std::string(1, acoustic_enabled),std::string(1, dark_mode_enabled),range_mode,std::to_string(periodic_cycling_enabled)
+        });    
     }
+
 
     bool DVL::resetDRR(){
         sendCommand(CMD_RESET_DR);
@@ -141,7 +181,15 @@ namespace dvl {
 
             while (clock::now() - start < TIMEOUT) { //read until a complete line is found
 
-                std::string partial_line = ser.read(1); //read one char
+                std::string partial_line = "";
+                char c;
+                ssize_t n = ::read(fd, &c, 1); // read 1 byte from the serial port
+                if (n == 1) {
+                    partial_line += c; // append to the end of the existing string
+                } else if (n < 0) {
+                    throw std::runtime_error("Serial read error: " + std::string(strerror(errno)));
+                }
+                // n == 0: no data available (non-blocking read)
 
                 if (partial_line.empty()) {
                     continue; //loop again if the the partial line is empty
@@ -203,7 +251,7 @@ namespace dvl {
                 //split up the line into a string array
                 std::string field;
                 std::vector<std::string> fields;
-                while(std::getline(ss, field, ",")) {
+                while(std::getline(ss, field,',')) {
                     fields.push_back(field);
                 }
 
@@ -280,29 +328,40 @@ namespace dvl {
 
     }
 
-    bool DVL::sendCommand(uint8_t cmd, const std::vector<std::string>& options = {}) { //cmd with optional input args
+    bool DVL::sendCommand(uint8_t cmd, const std::vector<std::string>& options) {
 
         std::stringstream msg;
 
-        msg << SOP << DIR_CMD << cmd; //add the start character, the direction, and the command to the output
+        // Build message
+        msg << SOP << DIR_CMD << static_cast<int>(cmd);  // add start character, direction, and command
 
-        for(const auto& opt : options) { //add each option as a comma separated string
+        for (const auto& opt : options) {               // add options as comma-separated
             msg << "," << opt;
         }
 
-        // Compute checksum
-        uint8_t csum = 0;
-        std::string body = msg.str();
-        
+        // Compute checksum (CRC-8)
         uint8_t crc = 0x00;
-        for(char c : body) {
+        std::string body = msg.str();
+        for (char c : body) {
             crc = CRC8_TABLE[crc ^ static_cast<uint8_t>(c)];
         }
-        msg << CS << std::hex << std::setw(2) << std::setfill('0') << (int)crc << "\n"; //add checksum to the message
 
-        ser.write(msg.str());
+        msg << CS << std::hex << std::setw(2) << std::setfill('0') << (int)crc << "\n";
+
+        // Write to serial port using POSIX write
+        std::string data = msg.str();
+        size_t total_written = 0;
+        while (total_written < data.size()) {
+            ssize_t n = ::write(fd, data.c_str() + total_written, data.size() - total_written);
+            if (n < 0) {
+                throw std::runtime_error("Serial write error: " + std::string(strerror(errno)));
+            }
+            total_written += n;
+        }
+
         return true;
-    }
+}
+
 
 } //namespace
 

@@ -1,8 +1,0 @@
-[
-{
-  "directory": "/home/kjhaydon/Github/WL-A50-DVL/build",
-  "command": "/usr/bin/c++   -g -o CMakeFiles/dvl.dir/example.cpp.o -c /home/kjhaydon/Github/WL-A50-DVL/example.cpp",
-  "file": "/home/kjhaydon/Github/WL-A50-DVL/example.cpp",
-  "output": "CMakeFiles/dvl.dir/example.cpp.o"
-}
-]
