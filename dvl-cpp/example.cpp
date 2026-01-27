@@ -27,10 +27,17 @@ int main() {
         std::cout << "Version: " << dvl.readVersion() << "\nProduct Details: " << dvl.readDetails() << std::endl;
 
         std::cout << "\nVELOCITY REPORT: " << "v = [" << std::to_string(vr.vx) << ", " <<std::to_string(vr.vy) << ", " << std::to_string(vr.vz) << "]" <<
-        "\nFigure of Merit = " << std::to_string(vr.fom) << "\nAltitude = " << std::to_string(vr.altitude) << std::endl;
+        "\nFigure of Merit = " << std::to_string(vr.fom) << "\nAltitude = " << std::to_string(vr.altitude) << "\nTime = " << std::to_string(vr.time) << 
+        "\nTime of Validity = " << std::to_string(vr.time_of_validity) << "\nTime of Transmission = " << std::to_string(vr.time_of_transmission) << 
+        "\nValid = " << std::to_string(vr.valid) << "\nStatus = " << std::to_string(vr.status) << std::endl;
+        std::cout << "Covariance values: ";
+        for (int i = 0; i < 9; i++) {
+            std::cout << " " << std::to_string(vr.covariance[i]);
+        }
 
         std::cout << "\nDEAD RECKONING REPORT: " << "\nR = [" << std::to_string(drr.x) << ", " << std::to_string(drr.y) << ", " << std::to_string(drr.z) << "]" <<
-        "\nEul = [" << std::to_string(drr.roll) << ", " << std::to_string(drr.pitch) << ", " << std::to_string(drr.yaw) << "]" << std::endl;
+        "\nEul = [" << std::to_string(drr.roll) << ", " << std::to_string(drr.pitch) << ", " << std::to_string(drr.yaw) << "]" << "\nTime stamp = " <<
+        std::to_string(drr.time_stamp) << "\nPos std = " << std::to_string(drr.pos_std) << "\nStatus = " << std::to_string(drr.status) << std::endl;
         
 
 
